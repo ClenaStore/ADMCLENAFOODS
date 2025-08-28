@@ -14,10 +14,17 @@
     }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;background:linear-gradient(180deg,#0f1115,#0b0c10);color:var(--txt);font-family:Inter,system-ui,Arial}
-    header{position:sticky;top:0;z-index:10;padding:12px;border-bottom:1px solid var(--line);
-      background:linear-gradient(180deg,rgba(20,22,26,.95),rgba(20,22,26,.75));backdrop-filter:blur(8px)}
-    .wrap{max-width:1100px;margin:0 auto;padding:0 12px}
+    body{
+      margin:0;background:linear-gradient(180deg,#0f1115,#0b0c10);
+      color:var(--txt);font-family:Inter,system-ui,Arial;
+      display:flex;flex-direction:column;min-height:100dvh;
+    }
+    header{
+      position:sticky;top:0;z-index:10;padding:12px;border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(20,22,26,.95),rgba(20,22,26,.75));
+      backdrop-filter:blur(8px)
+    }
+    .wrap{width:100%;margin:0 auto;padding:0 12px}
     .title{display:flex;align-items:center;gap:12px}
     .title img{width:34px;height:34px;border-radius:8px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -28,13 +35,16 @@
     button{cursor:pointer;background:linear-gradient(180deg,#f97316,#ea580c);font-weight:800;border:0}
     button.secondary{background:linear-gradient(180deg,#1a1f27,#14181f);border:1px solid var(--line);font-weight:600}
     button.ghost{background:transparent;border:1px dashed var(--line);color:var(--muted)}
-    main{max-width:1100px;margin:16px auto;padding:0 12px;display:grid;gap:12px}
+    main{
+      width:100%;margin:12px auto;padding:0 12px;display:grid;gap:12px;
+      flex:1; /* ocupa a tela toda abaixo do header */
+    }
     .card{background:linear-gradient(180deg,#171a20,#14161b);border:1px solid var(--line);border-radius:14px;padding:12px}
     .tabs{display:flex;gap:8px}
     .tabs button{flex:1}
     .hidden{display:none!important}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px dashed #2a2f3b;padding:8px;text-align:left;font-size:14px}
+    th,td{border-bottom:1px dashed #2a2f3b;padding:8px;text-align:left;font-size:14px;vertical-align:top}
     th{font-weight:800;color:#e5e7eb}
     td small{color:var(--muted)}
     .pill{display:inline-flex;gap:6px;align-items:center;background:#0f1115;border:1px solid var(--line);
@@ -44,6 +54,9 @@
     .status-dot{width:8px;height:8px;border-radius:999px;display:inline-block}
     .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
     .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    /* telas bem largas: 3 gráficos lado a lado */
+    @media (min-width:1400px){ .charts{grid-template-columns:repeat(3,1fr)} }
+    /* mobile: 1 coluna */
     @media (max-width:900px){ .grid,.charts{grid-template-columns:1fr} th:nth-child(3),td:nth-child(3){display:none} }
   </style>
 </head>
@@ -64,6 +77,7 @@
         <input id="adminSecret" placeholder="Admin secret" type="password" style="width:220px">
         <button id="btnSaveConn">Salvar conexão</button>
         <button class="secondary" id="btnReload">Recarregar</button>
+        <button class="secondary" id="btnFull">Tela cheia</button>
         <span id="connState" class="pill">⏳ Não conectado</span>
       </div>
 
@@ -105,7 +119,8 @@
         <button class="secondary" id="btnFiltrar">Filtrar</button>
       </div>
 
-      <div style="overflow:auto;margin-top:8px">
+      <!-- área de tabela ocupa a altura disponível -->
+      <div id="ordersScroll" style="overflow:auto;margin-top:8px">
         <table id="ordersTable">
           <thead>
             <tr>
@@ -144,6 +159,10 @@
           <strong>Produtos mais vendidos (Top 10)</strong>
           <canvas id="chartTop" height="280"></canvas>
         </div>
+        <div class="card" style="min-height:360px">
+          <strong>Ticket médio por dia</strong>
+          <canvas id="chartAvg" height="280"></canvas>
+        </div>
       </div>
 
       <div class="card" style="margin-top:12px">
@@ -164,11 +183,12 @@
   const BRL = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtDT = s => { const d=new Date(s); if(!s||isNaN(d)) return '-'; return d.toLocaleString('pt-BR'); };
 
-  let API_URL = store.get('https://script.google.com/macros/s/AKfycbyW9VQmIKsuhqQCmX_uv7iXh85H14UixEAJT24D7YYXB_dHRDUszZHbL6LQzSkAVW4Q/exec');
+  // ⚠️ corrigido: chave certa no localStorage + valor padrão (substitua pelo seu se quiser)
+  let API_URL = store.get('adm_api','https://script.google.com/macros/s/AKfycbxjGPNBX27DtQzIziM-tlsjVzxOt9bV9RP4TDgZWEIhJVnoowTtfIxlWepYedltBbVy/exec');
   let ADMIN_SECRET = store.get('adm_secret','');
 
   // UI init
-  $('#apiUrl').value = API_URL;
+  $('#apiUrl').value = API_URL || '';
   $('#adminSecret').value = ADMIN_SECRET || '';
 
   // Tabs
@@ -179,6 +199,7 @@
       const t = b.dataset.tab;
       $('#tab-pedidos').classList.toggle('hidden', t!=='pedidos');
       $('#tab-relatorios').classList.toggle('hidden', t!=='relatorios');
+      fitTableHeight();
     };
   });
   // default
@@ -195,6 +216,31 @@
   $('#btnReload').onclick = ()=> { loadOrders(); runReports(); };
 
   function setConnState(txt, cls=''){ const el=$('#connState'); el.textContent=txt; el.className='pill '+cls; }
+
+  // ===== Fullscreen =====
+  const fsBtn = $('#btnFull');
+  function isFS(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  async function enterFS(){
+    const el = document.documentElement;
+    if (el.requestFullscreen) return el.requestFullscreen();
+    if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+  }
+  async function exitFS(){
+    if (document.exitFullscreen) return document.exitFullscreen();
+    if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+  }
+  function updateFSBtn(){
+    fsBtn.textContent = isFS() ? 'Sair da tela cheia' : 'Tela cheia';
+  }
+  fsBtn.addEventListener('click', async ()=>{
+    try{
+      isFS() ? await exitFS() : await enterFS();
+    }catch(_){}
+    updateFSBtn();
+    setTimeout(fitTableHeight, 50);
+  });
+  document.addEventListener('fullscreenchange', ()=>{ updateFSBtn(); fitTableHeight(); });
+  document.addEventListener('webkitfullscreenchange', ()=>{ updateFSBtn(); fitTableHeight(); });
 
   // ===== API helpers =====
   async function api(acao, payload={}){
@@ -217,6 +263,7 @@
       ALL_ORDERS = data.items||[];
       renderOrders();
       setConnState('✅ OK','ok');
+      fitTableHeight();
     }catch(e){
       console.error(e);
       setConnState('❌ Erro: '+e.message,'bad');
@@ -256,10 +303,8 @@
       return;
     }
 
-    const payLabel = v => ({pix:'PIX', credito:'Crédito', debito:'Débito', dinheiro:'Dinheiro'})[v] || (v||'—');
-    const entrLabel = v => v==='pickup'?'Retirada':(v==='delivery'?'Entrega':'—');
-
     const rows = items.map(o=>{
+      const entrLabel = v => v==='pickup'?'Retirada':(v==='delivery'?'Entrega':'—');
       const bairroInfo = (o.entrega==='delivery' && o.endereco?.bairro) ? ` • ${o.endereco.bairro}` : '';
       return `
       <tr data-id="${o.id}">
@@ -324,7 +369,6 @@
         try{
           await api('adminUpdateOrder', { id, patch: { pay, status_pagamento, status_pedido } });
           toast('✅ Atualizado: '+id);
-          // atualiza cache local
           const o = ALL_ORDERS.find(x=>x.id===id);
           if(o){ o.pay=pay; o.status_pagamento=status_pagamento; o.status_pedido=status_pedido; }
         }catch(e){
@@ -353,11 +397,10 @@
   $('#fSearch').addEventListener('input', ()=>{ clearTimeout(window._fTO); window._fTO=setTimeout(renderOrders,120); });
 
   // ===== RELATÓRIOS =====
-  let chPay, chTop, chDays;
-  function ensureChart(ctx, type, data, opts){
-    if(ctx._chart){ ctx._chart.destroy(); }
-    const c = new Chart(ctx, { type, data, options: opts||{} });
-    ctx._chart = c; return c;
+  function ensureChart(canvas, type, data, opts){
+    if(canvas._chart){ canvas._chart.destroy(); }
+    const c = new Chart(canvas, { type, data, options: opts||{} });
+    canvas._chart = c; return c;
   }
   async function runReports(){
     try{
@@ -371,8 +414,7 @@
       const payOrder = ['pix','credito','debito','dinheiro'];
       const payData = payOrder.map(k=> pay[k]||0);
       ensureChart($('#chartPay'), 'doughnut', {
-        labels: payLabels,
-        datasets: [{ data: payData }]
+        labels: payLabels, datasets: [{ data: payData }]
       }, { plugins:{ legend:{ position:'bottom' }}});
 
       // Produtos Top (barra)
@@ -383,11 +425,18 @@
       }, { scales:{ y:{ beginAtZero:true }}});
 
       // Vendas por dia (linha)
-      const d = data.sales_by_day || []; // [{date:'2025-08-30', total:123.45, count: 7}]
+      const d = data.sales_by_day || []; // [{date:'YYYY-MM-DD', total:123.45, count:7}]
       ensureChart($('#chartDays'), 'line', {
         labels: d.map(x=> x.date),
         datasets: [{ label:'Pedidos', data: d.map(x=> x.count||0), tension:.2 }]
       }, { scales:{ y:{ beginAtZero:true }}});
+
+      // Ticket médio por dia
+      const avg = d.map(x=> (x.count? (x.total/x.count):0));
+      ensureChart($('#chartAvg'), 'bar', {
+        labels: d.map(x=> x.date),
+        datasets: [{ label:'Ticket médio (R$)', data: avg.map(v=> Number(v.toFixed(2))) }]
+      }, { scales:{ y:{ beginAtZero:true }}, plugins:{ legend:{ display:false }}});
 
     }catch(e){
       toast('❌ Erro nos relatórios: '+e.message, true);
@@ -402,13 +451,27 @@
     div.style.position='fixed'; div.style.right='12px'; div.style.bottom='12px';
     div.style.background= err? '#7f1d1d' : '#065f46';
     div.style.color='#fff'; div.style.padding='10px 12px'; div.style.borderRadius='10px'; div.style.boxShadow='0 8px 24px rgba(0,0,0,.35)';
+    div.style.zIndex='9999';
     document.body.appendChild(div);
     setTimeout(()=> div.remove(), 2200);
   };
 
+  // ===== Altura dinâmica da tabela =====
+  function fitTableHeight(){
+    const box = $('#ordersScroll');
+    if(!box) return;
+    const rect = box.getBoundingClientRect();
+    const avail = window.innerHeight - rect.top - 16; // 16px respiro
+    box.style.maxHeight = avail + 'px';
+  }
+  window.addEventListener('resize', fitTableHeight);
+  window.addEventListener('orientationchange', fitTableHeight);
+
   // Boot
   (function init(){
+    updateFSBtn();
     if(API_URL){ setConnState('🔗 Conectado'); loadOrders(); runReports(); }
+    setTimeout(fitTableHeight, 60);
   })();
   </script>
 </body>
