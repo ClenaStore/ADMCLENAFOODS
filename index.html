@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Clena Foods • Painel de Controle</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#0e0f12; --panel:#14161a; --soft:#1a1f27; --line:#262b36;
+      --brand:#e63946; --brand-2:#ff8f1f; --txt:#f7f8fa; --muted:#cbd5e1;
+      --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0f1115,#0b0c10);color:var(--txt);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+    header{position:sticky;top:0;background:linear-gradient(180deg,rgba(20,22,26,.95),rgba(20,22,26,.7));border-bottom:1px solid var(--line);z-index:10}
+    .wrap{display:flex;align-items:center;gap:12px;padding:12px 16px}
+    .title{font-weight:800;font-size:16px}
+    .muted{color:var(--muted)}
+    .btn{appearance:none;border:1px solid var(--line);background:linear-gradient(180deg,#1a1f27,#14181f);color:var(--txt);padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+    .btn.primary{background:linear-gradient(180deg,#f97316,#ea580c);border:0;color:#fff}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#0f1115;color:var(--muted);padding:6px 10px;border-radius:999px;font-size:12px}
+    .grid{display:grid;gap:12px}
+    .panel{background:linear-gradient(180deg,#171a20,#14161b);border:1px solid var(--line);border-radius:16px;padding:14px}
+    .tabs{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line)}
+    .tab{flex:0 0 auto}
+    .tab.active{outline:2px solid #2f3542}
+    main{padding:16px}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    input,select{background:#0f1115;border:1px solid var(--line);color:var(--txt);padding:10px;border-radius:10px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:10px;border-bottom:1px solid #202532;font-size:13px}
+    th{position:sticky;top:0;background:#14171d;z-index:1}
+    .status-chip{padding:4px 8px;border-radius:999px;font-size:12px;border:1px solid #2a3140;background:#0f141c}
+    .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+    .right{text-align:right}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+    .kpi{background:linear-gradient(180deg,#171a20,#14161b);border:1px solid var(--line);border-radius:16px;padding:14px}
+    .kpi strong{font-size:18px}
+    .footer{padding:12px 16px;color:#9aa3b2;font-size:12px}
+    .danger{border-color:#3b1f22;background:linear-gradient(180deg,#231317,#1a1012)}
+    .success{border-color:#183822;background:linear-gradient(180deg,#122018,#0f1a14)}
+    .scroll{overflow:auto;max-height:68vh}
+    .flex1{flex:1}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="title">CLENA FOODS — Painel</div>
+      <span class="pill">Admin</span>
+      <div class="row" style="margin-left:auto">
+        <input id="adminSecret" placeholder="Admin secret" style="min-width:220px">
+        <input id="apiUrl" placeholder="API URL (Apps Script Web App)" style="min-width:260px">
+        <button class="btn" id="btnSaveConn">Salvar conexão</button>
+        <button class="btn primary" id="btnReload">Recarregar</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="btn tab active" data-tab="pedidos">Pedidos</button>
+      <button class="btn tab" data-tab="relatorios">Relatórios</button>
+      <!-- se quiser, adicione Config mais tarde -->
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- ====== PEDIDOS ====== -->
+    <section id="tab-pedidos">
+      <div class="panel">
+        <div class="row">
+          <strong>Filtrar</strong>
+          <input type="date" id="fStart">
+          <input type="date" id="fEnd">
+          <input id="fSearch" placeholder="Buscar por #id, forma pgto, status…">
+          <select id="fEntrega">
+            <option value="">Entrega/Retirada</option>
+            <option value="delivery">Entrega</option>
+            <option value="pickup">Retirada</option>
+          </select>
+          <select id="fStatus">
+            <option value="">Status do pedido</option>
+            <option>Recebido</option>
+            <option>Em preparo</option>
+            <option>Despachado</option>
+            <option>Pronto</option>
+            <option>Entregue</option>
+            <option>Cancelado</option>
+          </select>
+          <button class="btn" id="btnClearFilters">Limpar</button>
+        </div>
+      </div>
+
+      <div class="panel scroll">
+        <table id="ordersTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Data</th>
+              <th>Entrega</th>
+              <th>Forma pgto</th>
+              <th>Status pgto</th>
+              <th>Status pedido</th>
+              <th class="right">Total</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody">
+            <tr><td colspan="8" class="muted">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ====== RELATÓRIOS ====== -->
+    <section id="tab-relatorios" class="hidden">
+      <div class="cards">
+        <div class="kpi">
+          <div class="muted">Pedidos</div>
+          <strong id="kpiPedidos">—</strong>
+        </div>
+        <div class="kpi">
+          <div class="muted">Faturamento (R$)</div>
+          <strong id="kpiFat">—</strong>
+        </div>
+        <div class="kpi">
+          <div class="muted">Ticket médio (R$)</div>
+          <strong id="kpiTicket">—</strong>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div class="panel">
+          <strong>Formas de pagamento</strong>
+          <canvas id="chPay"></canvas>
+        </div>
+        <div class="panel">
+          <strong>Produtos mais vendidos</strong>
+          <canvas id="chTopProd"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <strong>Vendas por dia</strong>
+          <span class="muted">Contagem de pedidos e faturamento</span>
+        </div>
+        <canvas id="chByDay"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <div class="footer">Feito com ❤️ • Se algo não carregar, verifique a URL da API e o admin secret.</div>
+
+  <script>
+  /***************** CONFIG CONEXÃO *****************/
+  const store = {
+    get(k,def){ try{return JSON.parse(localStorage.getItem(k)) ?? def}catch{return def} },
+    set(k,v){ localStorage.setItem(k, JSON.stringify(v)) }
+  };
+  const BRL = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  let API_URL = store.get('adm_api','https://script.google.com/macros/s/AKfycbxjGPNBX27DtQzIziM-tlsjVzxOt9bV9RP4TDgZWEIhJVnoowTtfIxlWepYedltBbVy/exec');
+  let ADMIN_SECRET = store.get('adm_secret','');
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  function showTab(id){
+    ['pedidos','relatorios'].forEach(t=>{
+      $('#tab-'+t).classList.toggle('hidden', t!==id);
+      $$('.tab').forEach(b=> b.classList.toggle('active', b.dataset.tab===id));
+    });
+  }
+  $$('.tab').forEach(b=> b.onclick=()=>showTab(b.dataset.tab));
+
+  $('#apiUrl').value = API_URL;
+  $('#adminSecret').value = ADMIN_SECRET;
+  $('#btnSaveConn').onclick = ()=>{
+    API_URL = $('#apiUrl').value.trim();
+    ADMIN_SECRET = $('#adminSecret').value.trim();
+    store.set('adm_api', API_URL);
+    store.set('adm_secret', ADMIN_SECRET);
+    alert('Conexão salva!');
+  };
+
+  /***************** API HELPER *****************/
+  async function api(acao, payload={}){
+    if(!API_URL) throw new Error('Defina a API URL');
+    const res = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ acao, admin_secret: ADMIN_SECRET, ...payload })
+    });
+    const text = await res.text();
+    let data; try{ data = JSON.parse(text) }catch(e){ throw new Error('Resposta não-JSON: '+text.slice(0,160)) }
+    if(!res.ok || data.ok===false) throw new Error(data.error || ('HTTP '+res.status));
+    return data;
+  }
+
+  /***************** ESTADO *****************/
+  let ALL_ORDERS = []; // itens vindos do adminListOrders
+  let VIEW_ORDERS = []; // filtrados
+
+  /***************** CARREGAR PEDIDOS (ADMIN) *****************/
+  async function loadOrders(){
+    $('#ordersBody').innerHTML = `<tr><td colspan="8" class="muted">Carregando…</td></tr>`;
+    try{
+      // Backend esperado: acao=adminListOrders -> { items:[ {id,total,status_pedido,status_pagamento,created_at,entrega,pay, order|json } ] }
+      const r = await api('adminListOrders');
+      ALL_ORDERS = (r.items || []).map(o=>{
+        // normalizar order JSON
+        let orderObj = null;
+        if (o.order) orderObj = o.order;
+        else if (o.json) { try{ orderObj = JSON.parse(o.json) }catch{} }
+        return { ...o, order: orderObj };
+      }).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+
+      VIEW_ORDERS = [...ALL_ORDERS];
+      renderOrders();
+      buildReports();
+    }catch(e){
+      console.error(e);
+      $('#ordersBody').innerHTML = `<tr><td colspan="8" class="bad">Erro: ${e.message}</td></tr>`;
+    }
+  }
+
+  /***************** RENDER TABELA *****************/
+  function renderOrders(){
+    const q = ($('#fSearch').value||'').toLowerCase();
+    const d0 = $('#fStart').value ? new Date($('#fStart').value+'T00:00:00') : null;
+    const d1 = $('#fEnd').value ? new Date($('#fEnd').value+'T23:59:59') : null;
+    const fEntrega = $('#fEntrega').value;
+    const fStatus  = $('#fStatus').value;
+
+    const rows = VIEW_ORDERS.filter(o=>{
+      const d = new Date(o.created_at);
+      if(d0 && d < d0) return false;
+      if(d1 && d > d1) return false;
+      if(fEntrega && (o.entrega||'') !== fEntrega) return false;
+      if(fStatus && (o.status_pedido||'') !== fStatus) return false;
+      const hay = `${o.id} ${o.pay||''} ${o.status_pagamento||''} ${o.status_pedido||''}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    if(!rows.length){
+      $('#ordersBody').innerHTML = `<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>`;
+      return;
+    }
+
+    const html = rows.map(o=>{
+      const dt = new Date(o.created_at);
+      const pgSel = `
+        <select data-bind="pay" data-id="${o.id}">
+          ${['pix','credito','debito','dinheiro',''].map(v=>`<option value="${v}" ${String(o.pay||'')===v?'selected':''}>${v||'—'}</option>`).join('')}
+        </select>`;
+      const spSel = `
+        <select data-bind="status_pagamento" data-id="${o.id}">
+          ${['Pendente','Confirmado','Recusado','Estornado','Cancelado'].map(v=>`<option ${String(o.status_pagamento||'')===v?'selected':''}>${v}</option>`).join('')}
+        </select>`;
+      const stSel = `
+        <select data-bind="status_pedido" data-id="${o.id}">
+          ${['Recebido','Em preparo','Despachado','Pronto','Entregue','Cancelado'].map(v=>`<option ${String(o.status_pedido||'')===v?'selected':''}>${v}</option>`).join('')}
+        </select>`;
+
+      const entregaLabel = o.entrega==='pickup' ? 'Retirada' : (o.entrega==='delivery'?'Entrega':'—');
+
+      return `
+        <tr>
+          <td><strong>#${o.id}</strong></td>
+          <td><div>${dt.toLocaleDateString()}<div class="muted" style="font-size:11px">${dt.toLocaleTimeString()}</div></div></td>
+          <td>${entregaLabel}</td>
+          <td>${pgSel}</td>
+          <td>${spSel}</td>
+          <td>${stSel}</td>
+          <td class="right"><strong>${BRL(o.total||0)}</strong></td>
+          <td>
+            <button class="btn" onclick="saveRow('${o.id}')">Salvar</button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    $('#ordersBody').innerHTML = html;
+  }
+
+  async function saveRow(id){
+    const getVal = (field) => (document.querySelector(`select[data-bind="${field}"][data-id="${id}"]`)||{}).value;
+    const payload = {
+      id,
+      pay: getVal('pay') || '',
+      status_pagamento: getVal('status_pagamento') || '',
+      status_pedido: getVal('status_pedido') || '',
+    };
+    const btns = $$(`button[onclick="saveRow('${id}')"]`);
+    btns.forEach(b=>{ b.disabled=true; b.textContent='Salvando…' });
+    try{
+      await api('updateStatus', payload); // ➜ backend deve aplicar nos campos da linha do pedido
+      // atualiza no cache local
+      const ix = ALL_ORDERS.findIndex(o=>o.id===id);
+      if(ix>=0){
+        ALL_ORDERS[ix] = { ...ALL_ORDERS[ix], ...payload };
+        VIEW_ORDERS = [...ALL_ORDERS];
+      }
+      renderOrders();
+      buildReports();
+    }catch(e){
+      alert('Erro ao salvar: '+e.message);
+    }finally{
+      btns.forEach(b=>{ b.disabled=false; b.textContent='Salvar' });
+    }
+  }
+
+  // filtros
+  $('#fSearch').addEventListener('input', ()=>renderOrders());
+  $('#fEntrega').addEventListener('change', ()=>renderOrders());
+  $('#fStatus').addEventListener('change', ()=>renderOrders());
+  $('#fStart').addEventListener('change', ()=>renderOrders());
+  $('#fEnd').addEventListener('change', ()=>renderOrders());
+  $('#btnClearFilters').onclick = ()=>{
+    ['fSearch','fEntrega','fStatus','fStart','fEnd'].forEach(id=> $('#'+id).value='');
+    renderOrders();
+  };
+
+  /***************** RELATÓRIOS *****************/
+  let chPay, chTopProd, chByDay;
+
+  function buildReports(){
+    // KPIs
+    const totalPedidos = ALL_ORDERS.length;
+    const fat = ALL_ORDERS.reduce((a,o)=>a+Number(o.total||0),0);
+    const ticket = totalPedidos ? (fat/totalPedidos) : 0;
+    $('#kpiPedidos').textContent = totalPedidos.toLocaleString('pt-BR');
+    $('#kpiFat').textContent = BRL(fat);
+    $('#kpiTicket').textContent = BRL(ticket);
+
+    // Pagamentos (pizza)
+    const byPay = {};
+    ALL_ORDERS.forEach(o=>{
+      const k = (o.pay || '—').toUpperCase();
+      byPay[k] = (byPay[k]||0) + 1;
+    });
+    const payLabels = Object.keys(byPay);
+    const payData = payLabels.map(k=>byPay[k]);
+    drawChartPie('chPay', payLabels, payData, (c)=>{ chPay=c; });
+
+    // Top produtos (barra): somar qty por item.name
+    const byProd = {};
+    ALL_ORDERS.forEach(o=>{
+      const orderObj = o.order;
+      const items = orderObj && Array.isArray(orderObj.items) ? orderObj.items : [];
+      items.forEach(it=>{
+        const nm = it.name || 'Item';
+        const q = Number(it.qty||1);
+        byProd[nm] = (byProd[nm]||0) + q;
+      });
+    });
+    const prodsArr = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,12);
+    const prodLabels = prodsArr.map(x=>x[0]);
+    const prodData = prodsArr.map(x=>x[1]);
+    drawChartBar('chTopProd', prodLabels, prodData, 'Qtd', (c)=>{ chTopProd=c; });
+
+    // Por dia: contagem + faturamento
+    const byDay = {};
+    ALL_ORDERS.forEach(o=>{
+      const d = new Date(o.created_at);
+      const key = d.toISOString().slice(0,10); // YYYY-MM-DD
+      byDay[key] = byDay[key] || { q:0, fat:0 };
+      byDay[key].q += 1;
+      byDay[key].fat += Number(o.total||0);
+    });
+    const days = Object.keys(byDay).sort();
+    const qData = days.map(k=>byDay[k].q);
+    const fatData = days.map(k=>byDay[k].fat);
+    drawChartDualAxis('chByDay', days, qData, fatData, (c)=>{ chByDay=c; });
+  }
+
+  function drawChartPie(id, labels, data, setRef){
+    const ctx = document.getElementById(id);
+    if(!ctx) return;
+    if(setRef && window[id]){ window[id].destroy(); }
+    const c = new Chart(ctx, {
+      type:'pie',
+      data:{ labels, datasets:[{ data }]},
+      options:{ plugins:{ legend:{ position:'bottom' } } }
+    });
+    if(setRef) window[id]=c, setRef(c);
+  }
+
+  function drawChartBar(id, labels, data, label, setRef){
+    const ctx = document.getElementById(id);
+    if(!ctx) return;
+    if(setRef && window[id]){ window[id].destroy(); }
+    const c = new Chart(ctx, {
+      type:'bar',
+      data:{ labels, datasets:[{ label, data }]},
+      options:{
+        plugins:{ legend:{ display:false }},
+        scales:{ y:{ beginAtZero:true } }
+      }
+    });
+    if(setRef) window[id]=c, setRef(c);
+  }
+
+  function drawChartDualAxis(id, labels, dataLeft, dataRight, setRef){
+    const ctx = document.getElementById(id);
+    if(!ctx) return;
+    if(setRef && window[id]){ window[id].destroy(); }
+    const c = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          { type:'bar', label:'Pedidos', data:dataLeft, yAxisID:'y1' },
+          { type:'line', label:'Faturamento (R$)', data:dataRight, yAxisID:'y2' }
+        ]
+      },
+      options:{
+        scales:{
+          y1:{ beginAtZero:true, position:'left' },
+          y2:{ beginAtZero:true, position:'right', grid:{ drawOnChartArea:false } }
+        }
+      }
+    });
+    if(setRef) window[id]=c, setRef(c);
+  }
+
+  /***************** BOOT *****************/
+  $('#btnReload').onclick = loadOrders;
+  // load on start if config present
+  if(API_URL && ADMIN_SECRET) loadOrders();
+  </script>
+</body>
+</html>
