@@ -164,7 +164,7 @@
   const BRL = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtDT = s => { const d=new Date(s); if(!s||isNaN(d)) return '-'; return d.toLocaleString('pt-BR'); };
 
-  let API_URL = store.get('adm_api','https://script.google.com/macros/s/AKfycbzvSrCZ_TgmjgHe9oFMWkqEKT-UQUPBlz7RcLU6c8woK8dZA9IuqtgwdpPDZyyW6vfB/exec');
+  let API_URL = store.get('https://script.google.com/macros/s/AKfycbyW9VQmIKsuhqQCmX_uv7iXh85H14UixEAJT24D7YYXB_dHRDUszZHbL6LQzSkAVW4Q/exec');
   let ADMIN_SECRET = store.get('adm_secret','');
 
   // UI init
