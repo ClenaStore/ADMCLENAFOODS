@@ -36,8 +36,7 @@
     button.secondary{background:linear-gradient(180deg,#1a1f27,#14181f);border:1px solid var(--line);font-weight:600}
     button.ghost{background:transparent;border:1px dashed var(--line);color:var(--muted)}
     main{
-      width:100%;margin:12px auto;padding:0 12px;display:grid;gap:12px;
-      flex:1;
+      width:100%;margin:12px auto;padding:0 12px;display:grid;gap:12px;flex:1;
     }
     .card{background:linear-gradient(180deg,#171a20,#14161b);border:1px solid var(--line);border-radius:14px;padding:12px}
     .tabs{display:flex;gap:8px}
@@ -56,13 +55,6 @@
     .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (min-width:1400px){ .charts{grid-template-columns:repeat(3,1fr)} }
     @media (max-width:900px){ .grid,.charts{grid-template-columns:1fr} th:nth-child(3),td:nth-child(3){display:none} }
-
-    /* ====== CSS do recibo térmico (apenas referência visual na tela, a impressão usa a janela própria) ====== */
-    .receipt-preview{background:#fff;color:#000;font-family:ui-monospace, Menlo, Consolas, monospace;width:58mm;max-width:58mm;margin:0 auto;padding:6px;border:1px solid #e5e7eb;border-radius:6px}
-    .receipt-preview h1, .receipt-preview h2, .receipt-preview h3{margin:0;font-size:12px;text-align:center}
-    .receipt-preview .line{border-top:1px dashed #999;margin:6px 0}
-    .receipt-preview .row{display:flex;justify-content:space-between;font-size:12px}
-    .receipt-preview .muted{color:#555}
   </style>
 </head>
 <body>
@@ -76,22 +68,15 @@
         </div>
       </div>
 
-      <!-- Conexão -->
-      <div class="toolbar">
-        <input id="apiUrl" placeholder="API URL (Apps Script Web App)" style="min-width:360px;flex:1">
-        <input id="adminSecret" placeholder="Admin secret" type="password" style="width:220px">
-        <button id="btnSaveConn">Salvar conexão</button>
-        <button class="secondary" id="btnReload">Recarregar</button>
-        <button class="secondary" id="btnFull">Tela cheia</button>
-        <span id="connState" class="pill">⏳ Não conectado</span>
-      </div>
-
-      <!-- Tabs -->
+      <!-- Barra de conexão REMOVIDA da UI (URL e segredo fixos no código) -->
       <div class="toolbar">
         <div class="tabs" style="flex:1">
           <button class="secondary" data-tab="pedidos">Pedidos</button>
           <button class="secondary" data-tab="relatorios">Relatórios</button>
         </div>
+        <button class="secondary" id="btnReload">Recarregar</button>
+        <button class="secondary" id="btnFull">Tela cheia</button>
+        <span id="connState" class="pill">⏳ Iniciando…</span>
       </div>
     </div>
   </header>
@@ -177,23 +162,18 @@
   </main>
 
   <script>
+  /* ===========================
+     CONFIG FIXA (não aparece na UI)
+     ⚠️ EMBUTIR SEGREDO NO FRONT É INSEGURO.
+  ============================ */
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwbOlm3qbzOa89xKn9-MBQOnATbYOYGBJS-xMo2ppDEzWlX3qtvLzadysBdvo5o7dui/exec';
+  const ADMIN_SECRET = 'troque-este-segredo'; // <<< coloque o mesmo do Apps Script
+
   // ===== Helpers =====
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
-  const store = {
-    get(k,def){ try{return JSON.parse(localStorage.getItem(k)) ?? def}catch{return def} },
-    set(k,v){ localStorage.setItem(k, JSON.stringify(v)) }
-  };
   const BRL = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtDT = s => { const d=new Date(s); if(!s||isNaN(d)) return '-'; return d.toLocaleString('pt-BR'); };
-
-  // Ajuste suas chaves locais
-  let API_URL = store.get('adm_api','');
-  let ADMIN_SECRET = store.get('adm_secret','');
-
-  // UI init
-  $('#apiUrl').value = API_URL || '';
-  $('#adminSecret').value = ADMIN_SECRET || '';
 
   // Tabs
   $$('.tabs [data-tab]').forEach(b=>{
@@ -208,16 +188,8 @@
   });
   document.querySelector('[data-tab="pedidos"]').click();
 
-  // Conn
-  $('#btnSaveConn').onclick = ()=>{
-    API_URL = $('#apiUrl').value.trim();
-    ADMIN_SECRET = $('#adminSecret').value.trim();
-    store.set('adm_api', API_URL);
-    store.set('adm_secret', ADMIN_SECRET);
-    setConnState('🔗 Conectado (salvo)');
-  };
+  // Conn (sem inputs)
   $('#btnReload').onclick = ()=> { loadOrders(); runReports(); };
-
   function setConnState(txt, cls=''){ const el=$('#connState'); el.textContent=txt; el.className='pill '+cls; }
 
   // ===== Fullscreen =====
@@ -250,7 +222,7 @@
       const data = await api('adminListOrders');
       ALL_ORDERS = data.items||[];
       renderOrders();
-      setConnState('✅ OK','ok');
+      setConnState('✅ Conectado','ok');
       fitTableHeight();
     }catch(e){
       console.error(e);
@@ -464,11 +436,8 @@
   window.addEventListener('resize', fitTableHeight);
   window.addEventListener('orientationchange', fitTableHeight);
 
-  // ====== Impressão térmica ======
-  const RECEIPT_WIDTH_MM = 58; // altere para 80 se sua impressora for 80mm
-  function padRight(txt, len){ txt = String(txt||''); if(txt.length>=len) return txt; return txt + ' '.repeat(len-txt.length); }
-  function padLeft(txt, len){ txt = String(txt||''); if(txt.length>=len) return txt; return ' '.repeat(len-txt.length) + txt; }
-
+  // ===== Impressão térmica =====
+  const RECEIPT_WIDTH_MM = 58; // 80 para bobina 80mm
   function calcItemTotals(it){
     const comps = Array.isArray(it.comps)? it.comps : [];
     const extras = comps.reduce((a,b)=> a + Number(b.price||0), 0);
@@ -477,24 +446,20 @@
     const total = unit * qty;
     return { unit, qty, total, extras, comps };
   }
-
   function buildReceiptHTML(o){
     const lines = [];
-    const W = 32; // caracteres por linha (aprox p/ 58mm monospaced ~ 1.9mm/char). Ajuste se necessário.
-
-    // Cabeçalho loja
-    lines.push('CLENA FOODS'.padStart(Math.floor((W+'CLENA FOODS'.length)/2),' '));
+    const W = 32;
+    const BR = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}).replace('R$','R$ ');
+    const entrLabel = v => v==='pickup'?'Retirada':(v==='delivery'?'Entrega':'—');
+    lines.push('CLENA FOODS');
     lines.push('Hamburgueria • Delivery');
     lines.push('Rua Pernambuco, 629');
     lines.push('Vila Brasil — Barreiras-BA');
     lines.push('--------------------------------');
-
-    // Pedido + data
     lines.push(`PEDIDO: ${o.id}`);
     lines.push(`Data: ${fmtDT(o.created_at)}`);
     const pagemap = {pix:'PIX', credito:'Crédito', debito:'Débito', dinheiro:'Dinheiro'};
     lines.push(`Pagamento: ${pagemap[o.pay]||o.pay||'-'}`);
-    const entrLabel = v => v==='pickup'?'Retirada':(v==='delivery'?'Entrega':'—');
     lines.push(`Entrega: ${entrLabel(o.entrega)}`);
     if (o.entrega === 'delivery' && o.endereco){
       const addr1 = `${o.endereco.rua||''}, ${o.endereco.num||''}`.trim();
@@ -506,22 +471,17 @@
     if(o.user?.nome) lines.push(`Cliente: ${o.user.nome}`);
     if(o.user?.whatsapp) lines.push(`WhatsApp: ${o.user.whatsapp}`);
     lines.push('--------------------------------');
-
-    // Itens
     const items = Array.isArray(o.items)? o.items : [];
     items.forEach(it=>{
       const {unit, qty, total, comps} = calcItemTotals(it);
-      // Nome do item
       lines.push(String(it.name||'Item'));
-      // Linha tot: "Qx UUU,UU  =  TTT,TT"
-      const left = `${qty}x ${BRL(unit)}`.replace('R$','R$ ');
-      const right = BRL(total).replace('R$','R$ ');
+      const left = `${qty}x ${BR(unit)}`;
+      const right = BR(total);
       const space = W - left.length - right.length;
       lines.push(left + ' '.repeat(Math.max(1,space)) + right);
-      // Complementos
       if(comps.length){
         comps.forEach(c=>{
-          const r = BRL(Number(c.price||0)).replace('R$','R$ ');
+          const r = BR(Number(c.price||0));
           const l = `+ ${c.name||'Extra'}`;
           const sp = W - l.length - r.length;
           lines.push(l + ' '.repeat(Math.max(1,sp)) + r);
@@ -529,40 +489,24 @@
       }
       lines.push('--------------------------------');
     });
-
-    // Totais
-    const addLineKV = (k, v)=>{
-      const vv = BRL(Number(v||0)).replace('R$','R$ ');
-      const sp = W - k.length - vv.length;
-      lines.push(k + ' '.repeat(Math.max(1,sp)) + vv);
-    };
-
+    const addKV = (k,v)=>{ const vv=BR(v); const sp=W - k.length - vv.length; lines.push(k + ' '.repeat(Math.max(1,sp)) + vv); };
     const sub = items.reduce((a,it)=> a + calcItemTotals(it).total, 0);
-    addLineKV('Subtotal', sub);
-    addLineKV('Entrega', Number(o.ship_fee||0));
+    addKV('Subtotal', sub);
+    addKV('Entrega', Number(o.ship_fee||0));
     lines.push('--------------------------------');
-    addLineKV('TOTAL', Number(o.total||0));
-
-    // Troco (se houver e se for dinheiro)
+    addKV('TOTAL', Number(o.total||0));
     const trocoObj = o.troco || null;
     if ((o.pay==='dinheiro') && trocoObj && trocoObj.precisa){
       const para = Number(trocoObj.para||0);
       const troco = Math.max(para - Number(o.total||0), 0);
       lines.push('--------------------------------');
-      const paraTxt = BRL(para).replace('R$','R$ ');
-      const trocoTxt = BRL(troco).replace('R$','R$ ');
-      const sp1 = W - 'Troco para'.length - paraTxt.length;
-      lines.push('Troco para' + ' '.repeat(Math.max(1,sp1)) + paraTxt);
-      const sp2 = W - 'Devolver'.length - trocoTxt.length;
-      lines.push('Devolver' + ' '.repeat(Math.max(1,sp2)) + trocoTxt);
+      addKV('Troco para', para);
+      addKV('Devolver', troco);
     }
-
-    // Rodapé
     lines.push('--------------------------------');
     lines.push('Obrigado pela preferência!');
     lines.push('Siga @clenafoods');
 
-    // HTML da página de impressão
     const css = `
       <style>
         @page{ size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
@@ -575,7 +519,6 @@
           white-space:pre-wrap;
           word-break:break-word;
         }
-        .center{text-align:center}
       </style>`;
     const body = `
       <div class="ticket">
@@ -585,22 +528,19 @@ ${lines.join('\n')}
     `;
     return `<!doctype html><html><head><meta charset="utf-8">${css}</head><body>${body}</body></html>`;
   }
-
   function printOrder(o){
     const html = buildReceiptHTML(o);
     const w = window.open('', '_blank', 'width=380,height=600,noopener,noreferrer');
     if(!w){ toast('Bloqueado pelo navegador. Permita pop-ups para imprimir.', true); return; }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    // Algumas impressoras abrem diálogo sozinhas; fechamos a janela depois:
+    w.document.open(); w.document.write(html); w.document.close();
     const killer = setInterval(()=>{ if(w.closed){ clearInterval(killer); } }, 500);
   }
 
   // Boot
   (function init(){
     updateFSBtn();
-    if(API_URL){ setConnState('🔗 Conectado'); loadOrders(); runReports(); }
+    setConnState('🔗 Conectado (config fixa)','ok');
+    loadOrders(); runReports();
     setTimeout(fitTableHeight, 60);
   })();
   </script>
