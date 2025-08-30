@@ -37,7 +37,7 @@
     button.ghost{background:transparent;border:1px dashed var(--line);color:var(--muted)}
     main{
       width:100%;margin:12px auto;padding:0 12px;display:grid;gap:12px;
-      flex:1; /* ocupa a tela toda abaixo do header */
+      flex:1;
     }
     .card{background:linear-gradient(180deg,#171a20,#14161b);border:1px solid var(--line);border-radius:14px;padding:12px}
     .tabs{display:flex;gap:8px}
@@ -54,10 +54,15 @@
     .status-dot{width:8px;height:8px;border-radius:999px;display:inline-block}
     .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
     .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    /* telas bem largas: 3 gráficos lado a lado */
     @media (min-width:1400px){ .charts{grid-template-columns:repeat(3,1fr)} }
-    /* mobile: 1 coluna */
     @media (max-width:900px){ .grid,.charts{grid-template-columns:1fr} th:nth-child(3),td:nth-child(3){display:none} }
+
+    /* ====== CSS do recibo térmico (apenas referência visual na tela, a impressão usa a janela própria) ====== */
+    .receipt-preview{background:#fff;color:#000;font-family:ui-monospace, Menlo, Consolas, monospace;width:58mm;max-width:58mm;margin:0 auto;padding:6px;border:1px solid #e5e7eb;border-radius:6px}
+    .receipt-preview h1, .receipt-preview h2, .receipt-preview h3{margin:0;font-size:12px;text-align:center}
+    .receipt-preview .line{border-top:1px dashed #999;margin:6px 0}
+    .receipt-preview .row{display:flex;justify-content:space-between;font-size:12px}
+    .receipt-preview .muted{color:#555}
   </style>
 </head>
 <body>
@@ -119,7 +124,6 @@
         <button class="secondary" id="btnFiltrar">Filtrar</button>
       </div>
 
-      <!-- área de tabela ocupa a altura disponível -->
       <div id="ordersScroll" style="overflow:auto;margin-top:8px">
         <table id="ordersTable">
           <thead>
@@ -183,8 +187,8 @@
   const BRL = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtDT = s => { const d=new Date(s); if(!s||isNaN(d)) return '-'; return d.toLocaleString('pt-BR'); };
 
-  // ⚠️ corrigido: chave certa no localStorage + valor padrão (substitua pelo seu se quiser)
-  let API_URL = store.get('https://script.google.com/macros/s/AKfycbwbOlm3qbzOa89xKn9-MBQOnATbYOYGBJS-xMo2ppDEzWlX3qtvLzadysBdvo5o7dui/exec');
+  // Ajuste suas chaves locais
+  let API_URL = store.get('adm_api','');
   let ADMIN_SECRET = store.get('adm_secret','');
 
   // UI init
@@ -202,7 +206,6 @@
       fitTableHeight();
     };
   });
-  // default
   document.querySelector('[data-tab="pedidos"]').click();
 
   // Conn
@@ -220,25 +223,10 @@
   // ===== Fullscreen =====
   const fsBtn = $('#btnFull');
   function isFS(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-  async function enterFS(){
-    const el = document.documentElement;
-    if (el.requestFullscreen) return el.requestFullscreen();
-    if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
-  }
-  async function exitFS(){
-    if (document.exitFullscreen) return document.exitFullscreen();
-    if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
-  }
-  function updateFSBtn(){
-    fsBtn.textContent = isFS() ? 'Sair da tela cheia' : 'Tela cheia';
-  }
-  fsBtn.addEventListener('click', async ()=>{
-    try{
-      isFS() ? await exitFS() : await enterFS();
-    }catch(_){}
-    updateFSBtn();
-    setTimeout(fitTableHeight, 50);
-  });
+  async function enterFS(){ const el = document.documentElement; if (el.requestFullscreen) return el.requestFullscreen(); if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen(); }
+  async function exitFS(){ if (document.exitFullscreen) return document.exitFullscreen(); if (document.webkitExitFullscreen) return document.webkitExitFullscreen(); }
+  function updateFSBtn(){ fsBtn.textContent = isFS() ? 'Sair da tela cheia' : 'Tela cheia'; }
+  fsBtn.addEventListener('click', async ()=>{ try{ isFS() ? await exitFS() : await enterFS(); }catch(_){ } updateFSBtn(); setTimeout(fitTableHeight, 50); });
   document.addEventListener('fullscreenchange', ()=>{ updateFSBtn(); fitTableHeight(); });
   document.addEventListener('webkitfullscreenchange', ()=>{ updateFSBtn(); fitTableHeight(); });
 
@@ -350,6 +338,7 @@
           <div class="row">
             <button class="secondary btnSave">Salvar</button>
             <button class="ghost btnNotify">Notificar</button>
+            <button class="secondary btnPrint">Imprimir</button>
           </div>
         </td>
       </tr>`;
@@ -357,7 +346,7 @@
 
     $('#ordersBody').innerHTML = rows;
 
-    // wire actions
+    // Salvar
     $$('#ordersBody .btnSave').forEach(btn=>{
       btn.onclick = async ()=>{
         const tr = btn.closest('tr'); const id = tr.dataset.id;
@@ -377,6 +366,7 @@
       };
     });
 
+    // Notificar
     $$('#ordersBody .btnNotify').forEach(btn=>{
       btn.onclick = async ()=>{
         const tr = btn.closest('tr'); const id = tr.dataset.id;
@@ -390,6 +380,17 @@
         }catch(e){ toast('❌ Erro: '+e.message, true); }
         finally{ btn.disabled=false; btn.textContent='Notificar'; }
       }
+    });
+
+    // Imprimir
+    $$('#ordersBody .btnPrint').forEach(btn=>{
+      btn.onclick = ()=>{
+        const tr = btn.closest('tr'); 
+        const id = tr.dataset.id;
+        const o = ALL_ORDERS.find(x=>x.id===id);
+        if(!o){ toast('Pedido não encontrado', true); return; }
+        printOrder(o);
+      };
     });
   }
 
@@ -408,8 +409,7 @@
       const to   = $('#rDateTo').value || '';
       const data = await api('adminStats', { date_from: from, date_to: to });
 
-      // Pagamentos (pizza)
-      const pay = data.payments || {}; // {pix:10, credito:5, ...}
+      const pay = data.payments || {};
       const payLabels = ['PIX','Crédito','Débito','Dinheiro'];
       const payOrder = ['pix','credito','debito','dinheiro'];
       const payData = payOrder.map(k=> pay[k]||0);
@@ -417,21 +417,18 @@
         labels: payLabels, datasets: [{ data: payData }]
       }, { plugins:{ legend:{ position:'bottom' }}});
 
-      // Produtos Top (barra)
       const tops = (data.top_products||[]).slice(0,10);
       ensureChart($('#chartTop'), 'bar', {
         labels: tops.map(x=> x.name||x.id),
         datasets: [{ label:'Qtd', data: tops.map(x=> x.qty||0) }]
       }, { scales:{ y:{ beginAtZero:true }}});
 
-      // Vendas por dia (linha)
-      const d = data.sales_by_day || []; // [{date:'YYYY-MM-DD', total:123.45, count:7}]
+      const d = data.sales_by_day || [];
       ensureChart($('#chartDays'), 'line', {
         labels: d.map(x=> x.date),
         datasets: [{ label:'Pedidos', data: d.map(x=> x.count||0), tension:.2 }]
       }, { scales:{ y:{ beginAtZero:true }}});
 
-      // Ticket médio por dia
       const avg = d.map(x=> (x.count? (x.total/x.count):0));
       ensureChart($('#chartAvg'), 'bar', {
         labels: d.map(x=> x.date),
@@ -461,11 +458,144 @@
     const box = $('#ordersScroll');
     if(!box) return;
     const rect = box.getBoundingClientRect();
-    const avail = window.innerHeight - rect.top - 16; // 16px respiro
+    const avail = window.innerHeight - rect.top - 16;
     box.style.maxHeight = avail + 'px';
   }
   window.addEventListener('resize', fitTableHeight);
   window.addEventListener('orientationchange', fitTableHeight);
+
+  // ====== Impressão térmica ======
+  const RECEIPT_WIDTH_MM = 58; // altere para 80 se sua impressora for 80mm
+  function padRight(txt, len){ txt = String(txt||''); if(txt.length>=len) return txt; return txt + ' '.repeat(len-txt.length); }
+  function padLeft(txt, len){ txt = String(txt||''); if(txt.length>=len) return txt; return ' '.repeat(len-txt.length) + txt; }
+
+  function calcItemTotals(it){
+    const comps = Array.isArray(it.comps)? it.comps : [];
+    const extras = comps.reduce((a,b)=> a + Number(b.price||0), 0);
+    const unit = Number(it.price||0) + extras;
+    const qty = Number(it.qty||1);
+    const total = unit * qty;
+    return { unit, qty, total, extras, comps };
+  }
+
+  function buildReceiptHTML(o){
+    const lines = [];
+    const W = 32; // caracteres por linha (aprox p/ 58mm monospaced ~ 1.9mm/char). Ajuste se necessário.
+
+    // Cabeçalho loja
+    lines.push('CLENA FOODS'.padStart(Math.floor((W+'CLENA FOODS'.length)/2),' '));
+    lines.push('Hamburgueria • Delivery');
+    lines.push('Rua Pernambuco, 629');
+    lines.push('Vila Brasil — Barreiras-BA');
+    lines.push('--------------------------------');
+
+    // Pedido + data
+    lines.push(`PEDIDO: ${o.id}`);
+    lines.push(`Data: ${fmtDT(o.created_at)}`);
+    const pagemap = {pix:'PIX', credito:'Crédito', debito:'Débito', dinheiro:'Dinheiro'};
+    lines.push(`Pagamento: ${pagemap[o.pay]||o.pay||'-'}`);
+    const entrLabel = v => v==='pickup'?'Retirada':(v==='delivery'?'Entrega':'—');
+    lines.push(`Entrega: ${entrLabel(o.entrega)}`);
+    if (o.entrega === 'delivery' && o.endereco){
+      const addr1 = `${o.endereco.rua||''}, ${o.endereco.num||''}`.trim();
+      const addr2 = `${o.endereco.bairro||''} • ${o.endereco.cidade||''}`.trim();
+      lines.push(addr1);
+      if(addr2.trim()) lines.push(addr2);
+      if(o.endereco.comp) lines.push(String(o.endereco.comp));
+    }
+    if(o.user?.nome) lines.push(`Cliente: ${o.user.nome}`);
+    if(o.user?.whatsapp) lines.push(`WhatsApp: ${o.user.whatsapp}`);
+    lines.push('--------------------------------');
+
+    // Itens
+    const items = Array.isArray(o.items)? o.items : [];
+    items.forEach(it=>{
+      const {unit, qty, total, comps} = calcItemTotals(it);
+      // Nome do item
+      lines.push(String(it.name||'Item'));
+      // Linha tot: "Qx UUU,UU  =  TTT,TT"
+      const left = `${qty}x ${BRL(unit)}`.replace('R$','R$ ');
+      const right = BRL(total).replace('R$','R$ ');
+      const space = W - left.length - right.length;
+      lines.push(left + ' '.repeat(Math.max(1,space)) + right);
+      // Complementos
+      if(comps.length){
+        comps.forEach(c=>{
+          const r = BRL(Number(c.price||0)).replace('R$','R$ ');
+          const l = `+ ${c.name||'Extra'}`;
+          const sp = W - l.length - r.length;
+          lines.push(l + ' '.repeat(Math.max(1,sp)) + r);
+        });
+      }
+      lines.push('--------------------------------');
+    });
+
+    // Totais
+    const addLineKV = (k, v)=>{
+      const vv = BRL(Number(v||0)).replace('R$','R$ ');
+      const sp = W - k.length - vv.length;
+      lines.push(k + ' '.repeat(Math.max(1,sp)) + vv);
+    };
+
+    const sub = items.reduce((a,it)=> a + calcItemTotals(it).total, 0);
+    addLineKV('Subtotal', sub);
+    addLineKV('Entrega', Number(o.ship_fee||0));
+    lines.push('--------------------------------');
+    addLineKV('TOTAL', Number(o.total||0));
+
+    // Troco (se houver e se for dinheiro)
+    const trocoObj = o.troco || null;
+    if ((o.pay==='dinheiro') && trocoObj && trocoObj.precisa){
+      const para = Number(trocoObj.para||0);
+      const troco = Math.max(para - Number(o.total||0), 0);
+      lines.push('--------------------------------');
+      const paraTxt = BRL(para).replace('R$','R$ ');
+      const trocoTxt = BRL(troco).replace('R$','R$ ');
+      const sp1 = W - 'Troco para'.length - paraTxt.length;
+      lines.push('Troco para' + ' '.repeat(Math.max(1,sp1)) + paraTxt);
+      const sp2 = W - 'Devolver'.length - trocoTxt.length;
+      lines.push('Devolver' + ' '.repeat(Math.max(1,sp2)) + trocoTxt);
+    }
+
+    // Rodapé
+    lines.push('--------------------------------');
+    lines.push('Obrigado pela preferência!');
+    lines.push('Siga @clenafoods');
+
+    // HTML da página de impressão
+    const css = `
+      <style>
+        @page{ size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
+        body{ margin:0; padding:0; background:#fff; }
+        .ticket{
+          width:${RECEIPT_WIDTH_MM}mm;
+          padding:6px 8px;
+          color:#000;
+          font: 12px/1.25 "Courier New", ui-monospace, Menlo, Consolas, monospace;
+          white-space:pre-wrap;
+          word-break:break-word;
+        }
+        .center{text-align:center}
+      </style>`;
+    const body = `
+      <div class="ticket">
+${lines.join('\n')}
+      </div>
+      <script>window.onload = function(){ setTimeout(()=>{ window.print(); }, 50); }</script>
+    `;
+    return `<!doctype html><html><head><meta charset="utf-8">${css}</head><body>${body}</body></html>`;
+  }
+
+  function printOrder(o){
+    const html = buildReceiptHTML(o);
+    const w = window.open('', '_blank', 'width=380,height=600,noopener,noreferrer');
+    if(!w){ toast('Bloqueado pelo navegador. Permita pop-ups para imprimir.', true); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    // Algumas impressoras abrem diálogo sozinhas; fechamos a janela depois:
+    const killer = setInterval(()=>{ if(w.closed){ clearInterval(killer); } }, 500);
+  }
 
   // Boot
   (function init(){
